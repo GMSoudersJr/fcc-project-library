@@ -1,86 +1,134 @@
 /*
 *
 *
-*       FILL IN EACH FUNCTIONAL TEST BELOW COMPLETELY
-*       -----[Keep the tests in the same order!]-----
+*       Complete the API routing below
+*       
 *       
 */
 
-var chaiHttp = require('chai-http');
-var chai = require('chai');
-var assert = chai.assert;
-var server = require('../server');
+'use strict';
 
-chai.use(chaiHttp);
+var expect = require('chai').expect;
+var MongoClient = require('mongodb').MongoClient;
+var ObjectId = require('mongodb').ObjectId;
+var mongoose = require('mongoose')
+const MONGODB_CONNECTION_STRING = process.env.DB;
+MongoClient.connect(MONGODB_CONNECTION_STRING, {useNewUrlParser: true}, function(err, db) {});
+var db = mongoose.connection 
 
-suite('Functional Tests', function() {
+const Schema = mongoose.Schema;
+const bookSchema = new Schema({
+  title: String,
+  comments: [String],
+  commentcount: {type: Number, default: 0},
+}, {timestamps: {createdAt: 'created_on', updatedAt: "updated_on"}});
+var Book = db.model('Issue', bookSchema);
 
-  /*
-  * ----[EXAMPLE TEST]----
-  * Each test should completely test the response of the API end-point including response status code!
-  */
-  test('#example Test GET /api/books', function(done){
-     chai.request(server)
-      .get('/api/books')
-      .end(function(err, res){
-        assert.equal(res.status, 200);
-        assert.isArray(res.body, 'response should be an array');
-        assert.property(res.body[0], 'commentcount', 'Books in array should contain commentcount');
-        assert.property(res.body[0], 'title', 'Books in array should contain title');
-        assert.property(res.body[0], '_id', 'Books in array should contain _id');
-        done();
-      });
-  });
-  /*
-  * ----[END of EXAMPLE TEST]----
-  */
+module.exports = function (app) {
+//logger
+  app.use(function(req, res, next){
+    console.log(req.method +' '+ req.path  + ' - ' + req.ip)
+    next()
+  })
+  
+  app.route('/api/books')
+  
+    .get(function (req, res){
+    mongoose.connect(MONGODB_CONNECTION_STRING,{useNewUrlParser: true});
+    db.on('error', console.error.bind(console, 'connection error:'));
+    db.once('open', function() {
+      console.log("Database connection successful! at GetI")
+      Book.find().select('title commentcount').exec((err, books)=>{res.json(books)})
+    });
+      //response will be array of book objects
+      //json res format: [{"_id": bookid, "title": book_title, "commentcount": num_of_comments },...]
+    })
+    
+    .post(function (req, res){
+     mongoose.connect(MONGODB_CONNECTION_STRING,{useNewUrlParser: true});
 
-  suite('Routing tests', function() {
-
-
-    suite('POST /api/books with title => create book object/expect book object', function() {
+      var title = req.body.title;
+    db.on('error', console.error.bind(console, 'connection error:'));
+    title===''?res.json("Missing Title"):
+    db.once('open', function() {
+      console.log("Database connection successful! at post")
+      var book = new Book({title : title});
+        book.save('title _id', (err, book)=>{
+          err?res.send(err):
+        res.json({title: book.title, comments:book.comments, _id:book._id})
+          console.log("%s's _id is %s",book.title, book._id)
+        });
       
-      test('Test POST /api/books with title', function(done) {
-        //done();
-      });
-      
-      test('Test POST /api/books with no title given', function(done) {
-        //done();
-      });
-      
+    });
+      //response will contain new book object including atleast _id and title
+    })
+    
+    .delete(function(req, res){
+         mongoose.connect(MONGODB_CONNECTION_STRING,{useNewUrlParser: true})
+
+    db.on('error', console.error.bind(console, 'connection error:'));
+    db.once('open', function() {
+      console.log("Database connection successful! at delete")
+    Book.deleteMany({},(err, deletedAll)=>{
+      err?console.log(err):res.json("complete delete successful")
+    
+    });
+    });
+      //if successful response will be 'complete delete successful'
     });
 
 
-    suite('GET /api/books => array of books', function(){
-      
-      test('Test GET /api/books',  function(done){
-        //done();
-      });      
-      
-    });
 
+  app.route('/api/books/:id')
+    .get(function (req, res){
+    mongoose.connect(MONGODB_CONNECTION_STRING,{useNewUrlParser: true})
 
-    suite('GET /api/books/[id] => book object with [id]', function(){
-      
-      test('Test GET /api/books/[id] with id not in db',  function(done){
-        //done();
+      var bookid = req.params.id;
+    db.on('error', console.error.bind(console, 'connection error:'));
+    db.once('open', function() {
+      console.log("Database connection successful! at getII")
+      Book.findById(bookid,'_id title comments',(err, book)=>{
+        if (book === null){
+          res.json("this _id does not exist")
+        } else
+        err?res.json(err):res.json({_id:book._id, title:book.title, comments:book.comments})      
       });
-      
-      test('Test GET /api/books/[id] with valid id in db',  function(done){
-        //done();
-      });
-      
+    
     });
+      //json res format: {"_id": bookid, "title": book_title, "comments": [comment,comment,...]}
+    })
+    
+    .post(function(req, res){
+    mongoose.connect(MONGODB_CONNECTION_STRING,{useNewUrlParser: true})
 
-
-    suite('POST /api/books/[id] => add comment/expect book object with id', function(){
+      var bookid = req.params.id;
+      var comment = req.body.comment;
+    db.on('error', console.error.bind(console, 'connection error:'));
+    db.once('open', function() {
+      console.log("Database connection successful! at post comment")
+      Book.findByIdAndUpdate(bookid, {$push:{comments:{$each:[comment], $sort:1}}, $inc:{commentcount:1}},{new: true, useFindAndModify: false},(err,book)=>{
+        err?console.log(err):res.json({_id:book._id, title:book.title, comments:book.comments})
+        
       
-      test('Test POST /api/books/[id] with comment', function(done){
-        //done();
       });
-      
+    
     });
+      //json res format same as .get
+    })
+    
+    .delete(function(req, res){
+    mongoose.connect(MONGODB_CONNECTION_STRING,{useNewUrlParser: true})
 
-  });
-
-});
+      var bookid = req.params.id;
+    db.on('error', console.error.bind(console, 'connection error:'));
+    db.once('open', function() {
+      console.log("Database connection successful! at deleteII")
+      Book.findByIdAndDelete(bookid,(err, deleted)=>{
+        
+        err?res.json("failed to delete"):res.json("delete successful")      
+      })
+    });
+      //if successful response will be 'delete successful'
+    });
+  
+};
